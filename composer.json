@@ -1,0 +1,21 @@
+{
+    "name": "alex-salt/yii2-amqp",
+    "description": "Yii2 AMQP Library component",
+    "type": "library",
+    "homepage": "https://github.com/holycheater/yii2-amqp",
+    "require": {
+        "php-amqplib/php-amqplib": "^2.6",
+        "yiisoft/yii2": "^2.0"
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Alex Salt",
+            "email": "alex.salt@e96.ru"
+        }
+    ],
+    "minimum-stability": "dev",
+    "autoload": {
+        "psr-4" : { "alexsalt\\amqp\\" : "src/" }
+    }
+}
