@@ -70,6 +70,8 @@ class Connection extends \yii\base\Component {
 
 	private $_ebindings = [ ];
 
+	private $_channels = [ ];
+
 	public function init() {
 		parent::init();
 		$this->connect();
@@ -88,12 +90,10 @@ class Connection extends \yii\base\Component {
 			} else {
 				return $this->_channels['default'] = $this->_conn->channel();
 			}
+		} else if (is_numeric($channelId)) {
+			return $this->_channels[$channelId] = $this->_conn->channel($channelId);
 		} else {
-			if (is_numeric($channelId)) {
-				return $this->_channels[$channelId] = $this->_conn->channel($channelId);
-			} else {
-				return $this->_channels[$channelId] = $this->_conn->channel();
-			}
+			return $this->_channels[$channelId] = $this->_conn->channel();
 		}
 	}
 
