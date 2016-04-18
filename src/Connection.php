@@ -76,10 +76,25 @@ class Connection extends \yii\base\Component {
 	}
 
 	/**
+	 * @param mixed $channelId
 	 * @return PhpAmqpLib\Channel\AMQPChannel
 	 */
-	public function getChannel($channelId = 'default') {
-		return $this->_conn->channel($channelId);
+	public function getChannel($channelId = null) {
+		if (isset($this->_channels[$channelId])) {
+			return $this->_channels[$channelId];
+		} else if ($channelId === null) {
+			if (isset($this->_channels['default'])) {
+				return $this->_channels['default'];
+			} else {
+				return $this->_channels['default'] = $this->_conn->channel();
+			}
+		} else {
+			if (is_numeric($channelId)) {
+				return $this->_channels[$channelId] = $this->_conn->channel($channelId);
+			} else {
+				return $this->_channels[$channelId] = $this->_conn->channel();
+			}
+		}
 	}
 
 	public function connect() {
@@ -120,6 +135,7 @@ class Connection extends \yii\base\Component {
 		}
 		if (isset($this->queues[$name])) {
 			$queue = new Queue($this->queues[$name]);
+			$queue->ensure();
 			$this->_queues[$name] = true;
 			return true;
 		} else {

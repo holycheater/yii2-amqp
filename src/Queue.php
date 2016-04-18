@@ -32,7 +32,7 @@ class Queue extends \yii\base\Object {
 	}
 
 	public function ensure() {
-		$channel = $this->getConnection()->channel();
+		$channel = $this->getConnection()->getChannel();
 		$channel->queue_declare(
 			$this->name,
 			$this->passive,
