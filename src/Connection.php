@@ -38,13 +38,13 @@ class Connection extends \yii\base\Component {
 
 	/**
 	 * @var array queues declaration
-	 * format: object properties for Queue object
+	 * format: name => object properties for Queue object
 	 */
 	public $queues = [ ];
 
 	/**
 	 * @var array exchange declaration
-	 * format: object properties for Exchange object
+	 * format: name => object properties for Exchange object
 	 */
 	public $exchanges = [ ];
 
@@ -134,7 +134,8 @@ class Connection extends \yii\base\Component {
 			return true;
 		}
 		if (isset($this->queues[$name])) {
-			$queue = new Queue($this->queues[$name]);
+			$params = array_merge($this->queues[$name], [ 'name' => $name ]);
+			$queue = new Queue($params);
 			$queue->ensure();
 			$this->_queues[$name] = true;
 			return true;
@@ -148,7 +149,8 @@ class Connection extends \yii\base\Component {
 			return true;
 		} else {
 			if (isset($this->exchanges[$name])) {
-				$exchange = new Exchange($this->exchanges[$name]);
+				$params = array_merge($this->exchanges[$name], [ 'name' => $name ]);
+				$exchange = new Exchange($params);
 				$exchange->ensure();
 				return true;
 			} else {
