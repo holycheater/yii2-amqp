@@ -2,75 +2,29 @@
 // vim: sw=4:ts=4:noet:sta:
 
 namespace alexsalt\amqp;
+use PhpAmqpLib\Message\AMQPMessage;
 
 use Yii;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+use InvalidArgumentException;
 
-/**
- * Yii2 AMQP connection
- */
 class Connection extends \yii\base\Component {
+	const DELIVERY_NON_PERSISTENT = 1;
+	const DELIVERY_PERSISTENT = 2;
 
-	/**
-	 * @var string
-	 */
 	public $host = 'localhost';
 
-	/**
-	 * @var integer
-	 */
 	public $port = 5672;
 
-	/**
-	 * @var string
-	 */
 	public $user;
 
-	/**
-	 * @var string
-	 */
 	public $password;
 
-	/**
-	 * @var string
-	 */
 	public $vhost = '/';
-
-	/**
-	 * @var array queues declaration
-	 * format: name => object properties for Queue object
-	 */
-	public $queues = [ ];
-
-	/**
-	 * @var array exchange declaration
-	 * format: name => object properties for Exchange object
-	 */
-	public $exchanges = [ ];
-
-	/**
-	 * @var array queue to exchange bindings
-	 * format: [ queue, exchange, routing_key ]
-	 */
-	public $queueBindings = [ ];
-
-	/**
-	 * @var array exchange bindings
-	 * format: [ dst, src, routing_key ]
-	 */
-	public $exchangeBindings = [ ];
 
 	private $_conn;
 
-	private $_queues = [ ];
-
-	private $_exchanges = [ ];
-
-	private $_qbindings = [ ];
-
-	private $_ebindings = [ ];
-
-	private $_channels = [ ];
+	private $_definedQueues = [ ];
 
 	public function init() {
 		parent::init();
@@ -78,23 +32,12 @@ class Connection extends \yii\base\Component {
 	}
 
 	/**
-	 * @param mixed $channelId
-	 * @return PhpAmqpLib\Channel\AMQPChannel
+	 * get amqp channel
+	 * @param integer $channelId channel id to use, defaults to 0, put null to autogenerate channel id
+	 * @return \PhpAmqpLib\Channel\AMQPChannel
 	 */
-	public function getChannel($channelId = null) {
-		if (isset($this->_channels[$channelId])) {
-			return $this->_channels[$channelId];
-		} else if ($channelId === null) {
-			if (isset($this->_channels['default'])) {
-				return $this->_channels['default'];
-			} else {
-				return $this->_channels['default'] = $this->_conn->channel();
-			}
-		} else if (is_numeric($channelId)) {
-			return $this->_channels[$channelId] = $this->_conn->channel($channelId);
-		} else {
-			return $this->_channels[$channelId] = $this->_conn->channel();
-		}
+	public function channel($channelId = 1) {
+		return $this->_conn->channel($channelId);
 	}
 
 	public function connect() {
@@ -102,88 +45,60 @@ class Connection extends \yii\base\Component {
 	}
 
 	/**
-	 * @param string|Message $message
-	 * @param string $queueName
+	 * basic send message to queue
+	 * @param MessageInterface $msg
+	 * @param string $queue queue name to publish
 	 */
-	public function sendToQueue($message, $queueName) {
-		$this->ensureQueue($queueName);
+	public function sendToQueue(MessageInterface $msg, $queue) {
+		$amqpMessage = new AMQPMessage($msg->getPayload(), [
+			'delivery_mode' => self::DELIVERY_PERSISTENT
+		]);
+		$channel = $this->channel();
+		$channel->basic_publish($amqpMessage, '', $queue);
+	}
 
-		if (is_string($message)) {
-			$message = new Message([ 'data' => $message ]);
-		}
-		$this->channel->basic_publish($message->get(), '', $queueName);
+	public function sendToExchange(MessageInterface $msg, $exchange, $routing_key = '') {
+		$amqpMessage = new AMQPMessage($msg->getPayload(), [
+			'delivery_mode' => self::DELIVERY_PERSISTENT
+		]);
+		$channel = $this->channel();
+		$channel->basic_publish($amqpMessage, $exchange, $routing_key);
 	}
 
 	/**
-	 * @param string|Message $message
-	 * @param string $exchangeName
-	 * @param string $routingKey
+	 * Ensures queue exists.
+	 * Creates a new queue with defaults or from predefined config
+	 * if it does not exist
+	 * @param string|Queue $queue queue name or object
+	 * @throws \InvalidArgumentException
 	 */
-	public function sendToExchange($message, $exchangeName, $routingKey) {
-		$this->ensureExchange($exchangeName);
-		$this->ensureBindings($exchangeName);
+	public function ensureQueue($queue) {
 
-		if (is_string($message)) {
-			$message = new Message([ 'data' => $message ]);
-		}
-		$this->channel->basic_publish($message->get(), $exchangeName, $routingKey);
-	}
-
-	public function ensureQueue($name) {
-		if (isset($this->_queues[$name])) {
-			return true;
-		}
-		if (isset($this->queues[$name])) {
-			$params = array_merge($this->queues[$name], [ 'name' => $name ]);
-			$queue = new Queue($params);
-			$queue->ensure();
-			$this->_queues[$name] = true;
-			return true;
+		if (is_string($queue)) {
+			$q = new Queue([ 'name' => $queue ]);
+		} else if ($queue instanceof Queue) {
+			$q = $queue;
+		} else if (is_array($queue)) {
+			$q = new Queue($queue);
 		} else {
-			throw new \Exception("Queue '{$name}' not defined");
+			throw new InvalidArgumentException('invalid queue pass');
 		}
-	}
 
-	public function ensureExchange($name) {
-		if (isset($this->_exchanges[$name])) {
-			return true;
-		} else {
-			if (isset($this->exchanges[$name])) {
-				$params = array_merge($this->exchanges[$name], [ 'name' => $name ]);
-				$exchange = new Exchange($params);
-				$exchange->ensure();
-				return true;
-			} else {
-				throw new \Exception("Exchange '{$name}' not defined");
-			}
+		if (isset($this->_definedQueues[$q->name])) {
+			return;
 		}
-	}
 
-	public function ensureBindings($exchangeName) {
-		foreach ($this->queueBindings as $binding) {
-			if ($binding[1] == $exchangeName) {
-				$key = implode('-', $binding);
-				if (!isset($this->_qbindings[$key])) {
-					list($queue, $exchange) = $binding;
-					$this->ensureQueue($queue);
-					$routing_key = isset($binding[2]) ? $binding[2] : '';
-					$this->channel->queue_bind($queue, $exchange, $routing_key);
-					$this->_qbindings[$key] = true;
-				}
-			}
-		}
-		foreach ($this->exchangeBindings as $binding) {
-			if ($binding[0] == $exchangeName || $binding[1] == $exchangeName) {
-				$key = implode('-', $binding);
-				if (!isset($this->_ebindings[$key])) {
-					list($dst, $src, $routing_key) = $binding;
-					$this->ensureExchange($dst);
-					$this->ensureExchange($src);
-
-					$this->channel->exchange_bind($dst, $src, $routing_key);
-					$this->_ebindings[$key] = true;
-				}
-			}
-		}
+		$channel = $this->channel();
+		$channel->queue_declare(
+			$q->name,
+			$q->passive,
+			$q->durable,
+			$q->exclusive,
+			$q->auto_delete,
+			$q->nowait,
+			$q->arguments,
+			$q->ticket
+		);
+		$this->_definedQueues[$q->name] = true;
 	}
 }

@@ -4,11 +4,12 @@
 namespace alexsalt\amqp;
 
 use Yii;
+use yii\base\Object;
 
 /**
  * a class representing RMQ queue
  */
-class Queue extends \yii\base\Object {
+class Queue extends Object {
 	public $name;
 
 	public $passive = false;
@@ -25,14 +26,15 @@ class Queue extends \yii\base\Object {
 
 	public $ticket = null;
 
-	public $component = 'rmq';
-
 	public function getConnection() {
-		return Yii::$app->get($this->component);
+		return Yii::$app->rmq;
 	}
 
+	/**
+	 * @deprecated
+	 */
 	public function ensure() {
-		$channel = $this->getConnection()->getChannel();
+		$channel = $this->getConnection()->channel();
 		$channel->queue_declare(
 			$this->name,
 			$this->passive,
